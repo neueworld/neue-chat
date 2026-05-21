@@ -13,7 +13,7 @@ import { ArrowUp, CircleNotch, Sparkle } from '@phosphor-icons/react'
 
 type Message = { role: 'user' | 'assistant'; content: string }
 
-const SESSION_ID = Math.random().toString(36).slice(2, 9)
+const SESSION_STORAGE_KEY = 'neue_chat_session_id'
 const LEAD_RE = /<LEAD_CAPTURE>[\s\S]*?<\/LEAD_CAPTURE>/g
 const STARTERS = [
   'What services do you offer?',
@@ -30,8 +30,18 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [sessionId, setSessionId] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    let id = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 9)
+      localStorage.setItem(SESSION_STORAGE_KEY, id)
+    }
+    setSessionId(id)
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -50,7 +60,7 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next, sessionId: SESSION_ID }),
+        body: JSON.stringify({ messages: next, sessionId }),
       })
 
       if (res.status === 429) {
@@ -80,7 +90,9 @@ export default function ChatPage() {
           if (payload === '[DONE]') break
           try {
             const parsed = JSON.parse(payload)
-            if (parsed.chunk) {
+            if (parsed.error) {
+              setMessages(m => [...m.slice(0, -1), { role: 'assistant', content: parsed.error }])
+            } else if (parsed.chunk) {
               fullText += parsed.chunk
               setMessages(m => [...m.slice(0, -1), { role: 'assistant', content: fullText }])
             }
@@ -96,7 +108,7 @@ export default function ChatPage() {
       setStreaming(false)
       textareaRef.current?.focus()
     }
-  }, [messages, streaming])
+  }, [messages, streaming, sessionId])
 
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -8,11 +8,16 @@ export interface Lead {
   message?: string
 }
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID!)
-
 export async function saveLead(lead: Lead) {
   console.log('Lead captured:', lead)
+
+  if (!process.env.AIRTABLE_API_KEY || !process.env.AIRTABLE_BASE_ID) {
+    console.warn('Airtable not configured — lead not saved')
+    return
+  }
+
+  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
+    .base(process.env.AIRTABLE_BASE_ID)
 
   await base(process.env.AIRTABLE_TABLE_NAME || 'Leads').create([{
     fields: {

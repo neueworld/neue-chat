@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { KNOWLEDGE_BASE } from '@/lib/knowledge'
 import { saveLead } from '@/lib/leads'
+import { saveTranscript } from '@/lib/transcripts'
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -67,6 +68,14 @@ export async function POST(req: Request) {
             const lead = JSON.parse(match[1])
             if (lead.email) saveLead({ ...lead, source: lead.source || 'Intent', sessionId })
           } catch { /* malformed JSON */ }
+        }
+
+        // Persist the full transcript (upsert by sessionId)
+        if (sessionId) {
+          saveTranscript(String(sessionId), [
+            ...cleaned,
+            { role: 'assistant', content: fullText },
+          ]).catch(e => console.error('saveTranscript error:', e))
         }
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
