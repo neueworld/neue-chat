@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { KNOWLEDGE_BASE } from '@/lib/knowledge'
 import { saveLead } from '@/lib/leads'
-import { saveTranscript } from '@/lib/transcripts'
+import { saveTranscript, saveTranscriptJson } from '@/lib/transcripts'
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -11,6 +11,11 @@ const LEAD_RE = /<LEAD_CAPTURE>\s*([\s\S]*?)\s*<\/LEAD_CAPTURE>/
 // ~4 chars per token; limit per session: 4000 tokens ≈ 16,000 chars
 const SESSION_CHARS = new Map<string, number>()
 const SESSION_CHAR_LIMIT = 16_000
+
+// Per-session email tracking to prevent duplicate lead saves
+const SESSION_CAPTURED_EMAILS = new Map<string, Set<string>>()
+
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
 
 export async function POST(req: Request) {
   const { messages, sessionId } = await req.json()
@@ -34,6 +39,20 @@ export async function POST(req: Request) {
   // Count input chars toward session limit
   const inputChars = cleaned.reduce((n, m) => n + m.content.length, 0)
   SESSION_CHARS.set(sessionKey, usedChars + inputChars)
+
+  // Auto-capture any email a user drops in their messages, regardless of model behavior
+  const capturedEmails = SESSION_CAPTURED_EMAILS.get(sessionKey) ?? new Set<string>()
+  SESSION_CAPTURED_EMAILS.set(sessionKey, capturedEmails)
+  for (const msg of cleaned) {
+    if (msg.role === 'user') {
+      for (const email of msg.content.match(EMAIL_RE) ?? []) {
+        if (!capturedEmails.has(email)) {
+          capturedEmails.add(email)
+          saveLead({ email, source: 'Direct', sessionId }).catch(e => console.error('auto lead capture error:', e))
+        }
+      }
+    }
+  }
 
   const encoder = new TextEncoder()
 
@@ -61,21 +80,25 @@ export async function POST(req: Request) {
           }
         }
 
-        // Parse and save lead silently
+        // Parse and save lead from model output (source classification)
         const match = fullText.match(LEAD_RE)
         if (match) {
           try {
             const lead = JSON.parse(match[1])
-            if (lead.email) saveLead({ ...lead, source: lead.source || 'Intent', sessionId })
+            if (lead.email && !capturedEmails.has(lead.email)) {
+              capturedEmails.add(lead.email)
+              saveLead({ ...lead, source: lead.source || 'Intent', sessionId })
+            }
           } catch { /* malformed JSON */ }
         }
 
         // Persist the full transcript (upsert by sessionId)
         if (sessionId) {
-          saveTranscript(String(sessionId), [
-            ...cleaned,
-            { role: 'assistant', content: fullText },
-          ]).catch(e => console.error('saveTranscript error:', e))
+          const fullMessages = [...cleaned, { role: 'assistant' as const, content: fullText }]
+          saveTranscript(String(sessionId), fullMessages)
+            .catch(e => console.error('saveTranscript error:', e))
+          saveTranscriptJson(String(sessionId), fullMessages)
+            .catch(e => console.error('saveTranscriptJson error:', e))
         }
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))

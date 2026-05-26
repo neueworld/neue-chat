@@ -1,4 +1,6 @@
 import Airtable from 'airtable'
+import { promises as fs } from 'fs'
+import path from 'path'
 
 export interface TranscriptMessage {
   role: 'user' | 'assistant'
@@ -47,5 +49,33 @@ export async function saveTranscript(sessionId: string, messages: TranscriptMess
     }
   } catch (err) {
     console.error('Failed to save transcript:', err)
+  }
+}
+
+export async function saveTranscriptJson(sessionId: string, messages: TranscriptMessage[]) {
+  if (!sessionId || messages.length === 0) return
+
+  try {
+    const dir = path.join(process.cwd(), 'data', 'transcripts')
+    await fs.mkdir(dir, { recursive: true })
+
+    const filePath = path.join(dir, `${sessionId}.json`)
+    const now = new Date().toISOString()
+
+    let startedAt = now
+    try {
+      const existing = JSON.parse(await fs.readFile(filePath, 'utf8'))
+      startedAt = existing.startedAt ?? now
+    } catch { /* file doesn't exist yet */ }
+
+    await fs.writeFile(filePath, JSON.stringify({
+      sessionId,
+      messages,
+      messageCount: messages.length,
+      startedAt,
+      updatedAt: now,
+    }, null, 2))
+  } catch (err) {
+    console.error('Failed to save transcript JSON:', err)
   }
 }
