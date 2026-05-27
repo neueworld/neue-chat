@@ -18,7 +18,7 @@ export async function saveTranscript(sessionId: string, messages: TranscriptMess
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
     .base(process.env.AIRTABLE_BASE_ID)
 
-  const table = base(process.env.AIRTABLE_TRANSCRIPTS_TABLE || 'Transcripts')
+  const table = base(process.env.AIRTABLE_TRANSCRIPTS_TABLE || 'neue-transcripts')
 
   const transcript = messages
     .map(m => `[${m.role.toUpperCase()}]\n${m.content}`)

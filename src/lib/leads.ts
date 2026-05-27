@@ -16,16 +16,20 @@ export async function saveLead(lead: Lead) {
     return
   }
 
-  const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-    .base(process.env.AIRTABLE_BASE_ID)
+  try {
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
+      .base(process.env.AIRTABLE_BASE_ID)
 
-  await base(process.env.AIRTABLE_TABLE_NAME || 'Leads').create([{
-    fields: {
-      Name: lead.name || '',
-      Email: lead.email,
-      Source: lead.source || 'Website Chat',
-      'Session ID': lead.sessionId || '',
-      'Captured At': new Date().toISOString().split('T')[0],
-    },
-  }])
+    await base(process.env.AIRTABLE_TABLE_NAME || 'neue-leads').create([{
+      fields: {
+        Name: lead.name || '',
+        Email: lead.email,
+        Source: lead.source || 'Website Chat',
+        'Session ID': lead.sessionId || '',
+        'Captured At': new Date().toISOString().split('T')[0],
+      },
+    }])
+  } catch (err) {
+    console.error('[leads] Airtable error:', err)
+  }
 }
